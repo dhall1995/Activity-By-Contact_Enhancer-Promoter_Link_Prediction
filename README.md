@@ -9,15 +9,14 @@ Ideally, to identify interactions such as this we would use the previously publi
 
 File formats:
 
-- enhancer regions (e.g. enhancer_regions.bed) 
-- promoter regions (e.g. promoter_regions.bed)
-- gene expression (e.g. expression.bed)
-- K27ac ChIPseq (BigWig format)
-- Population Hi-C (.ncc format)
+- enhancer regions (.csv with columns ['chrom','start','end','id'] detailing the genomic positions of each enhancer as well as some id to keep track of enhancers) 
+- promoter regions/info (.csv with collumns ['chrom','start','end','id'] detailing the genomic position of each promoter as well as the associated gene name)
+- per-timepoint gene expression (.csv per timepoint, single collumn with each row giving the expression value for the gene associated with each promoter at that timepoint)
+- per-timepoint, per-enhancer K27ac scores (.csv per timepoint, single collumn with each row giving the total number of k27ac reads across an enhancer)
+- Population Hi-C binned at 5kb resolution (.npz format generated using a .ncc file and the ncc_bin feature from the nuc_tools module - https://github.com/tjs23/nuc_tools)
 
 scripts:
 
-- ncc_to_normalised_hic.py - takes in a .ncc format hi-c file containing the mapped reads from a hi-c experiment and creates (per-chromosome) a Hi-C map which is ~KW-normalised. We don't have incredibly high read depth in our current population Hi-C datasets so we will instead row-normalise by the square root of the sum of values in a row (following Rao et al. 2014). Optionally outputs the result to a dictionary of sparse (COO) format matrices
-- filter_promoters_by_expression.py - given some expression scores and a full list of genes/promoters, returns a BED file detailing the promoters (and promoter regions + associated genes etc.) with expression higher than some threshold 
-- enhancers_from_chip.py - uses ChIPseq for H3K27ac/K27me3 to identify active enhancer regions for a given timepoint
-- ABC_EP_links.py - inputting ~KW-normalised per-chromosome sparse hi-C matrices, expressed promoters and enhancers (weighted by their activity score), returns the ABC links above some threshold. 
+- norm_contacts.py - performs SQRT-VC normalisation (see Rao et al. 2014 - https://www.cell.com/cms/10.1016/j.cell.2014.11.021/attachment/d3c6dcd8-c799-4f68-bbe4-201be54960b5/mmc1 ) on the cis contact maps detailed within the raw population Hi-C matrices. 
+- linear_links.py - creates master list of possible enhancer promoter links by linking those promoters with enhancers that fall within some linear threshold distance along the chromatin backbone. Defaults to 5Mb. 
+- ABC_score.py - inputting ~KW-normalised per-chromosome sparse hi-C matrices, promoter info, enhancer info, promoter expression and enhancer k27ac scores, calculates and stores a file detailing enhancer-promoter links with an ABC score above a given threshold from the master list of linear enhancer-promoter links.  

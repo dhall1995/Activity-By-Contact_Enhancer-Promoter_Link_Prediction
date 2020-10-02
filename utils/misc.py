@@ -12,8 +12,11 @@ def load_obj(in_path):
     with open(in_path + '.pkl', 'rb') as f:
         return pickle.load(f)
 
-def split_by_chr(df):
-    return {k1: np.concatenate([item[None,1:] for item in list(g1)],axis = 0) for k1,g1 in itertools.groupby(sorted(df.values, key = lambda x:x[0]),lambda x: x[0])}
+def split_by_chr(df, chrom_col=0, accepted_cols=None):
+    if accepted_cols is not None:
+        return {k1: np.concatenate([item[None,accepted_cols] for item in list(g1)],axis = 0) for k1,g1 in itertools.groupby(sorted(df.values, key = lambda x:x[chrom_col]),lambda x: x[chrom_col])}
+    else:
+        return {k1: np.concatenate([item[None,1:] for item in list(g1)],axis = 0) for k1,g1 in itertools.groupby(sorted(df.values, key = lambda x:x[chrom_col]),lambda x: x[chrom_col])}
 
 def process_regions(path, **kwargs):
     regs = pd.read_csv(path,
@@ -45,9 +48,28 @@ def parse_bed(bed,
     return x1
 
 def buffer_vec(vec, buffer = int(1e3)):
-    out = np.empty((vec.shape[0],2))
-    
     out[:,0] = vec - buffer
     out[:,1] = vec + buffer
+    
+    return out
+
+def safe_divide(arr1, arr2):
+    out = np.zeros(arr1.shape)
+    out[arr2!=0] = np.divide(arr1[arr2!=0], arr2[arr2!=0])
+    
+    return out
+
+def quantile_normalise(vec, ref):
+    vec_idxs = np.argsort(vec)
+    ref_idxs = np.argsort(ref)
+    
+    out = np.zeros(vec.shape)
+    out[vec_idxs] = ref[ref_idxs]
+    
+    return out
+
+def to_bool(vec, shape):
+    out = np.array([False]*shape)
+    out[vec] = True
     
     return out

@@ -55,11 +55,11 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description='Read in a file or set of files, and return the result.', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument("-r1","--regions1",
-                        default = "data/raw/promoters/promoter_info.csv",
+                        default = "data/processed/promoter_info.csv",
                         help="bed file containing the first set of regions. Should have columns: chr, start, end",
                         type=str)
     parser.add_argument("-r2","--regions2",
-                        default = "data/raw/enhancers/enhancer_info.csv",
+                        default = "data/processed/candidate_elements.csv",
                         help="bed file containing the second set of regions. Should have columns: chr, start, end",
                         type=str)
     parser.add_argument("-o", "--outpath",
@@ -71,7 +71,7 @@ if __name__ == "__main__":
                         help="name of the first regions",
                         type = str)
     parser.add_argument("-r2n", "--region2names",
-                        default = "enhancer",
+                        default = "regulatory_element",
                         help="name of the second regions",
                         type = str)
     parser.add_argument("-t", "--distance_thresh",

@@ -1,5 +1,5 @@
 from utils.misc import split_by_chr, process_regions, safe_divide, quantile_normalise
-from utils.contacts import infer_gamma, theoretical_contact_strengths, clip_contacts
+from utils.straw_contacts import infer_gamma, theoretical_contact_strengths, clip_contacts, straw_extract_chr_matrix
 from utils.datatracks import DataTrack_rvp as dtrvp
 
 import numpy as np
@@ -17,21 +17,30 @@ def single_chrom_ABC(pregs,
                      eregs,
                      ek27ac,
                      llinks,
-                     contacts,
+                     contact_path,
+                     binsize,
+                     normalisation,
                      gamma,
                      chrom
                     ):
+    
+    print("loading contact data, chromosome {}".format(chrom))
+    contacts = straw_extract_chr_matrix(contact_path, 
+                                        chrom,
+                                        binsize = binsize,
+                                        normalisation = normalisation)
+    
     
     prom_bins = np.mean(pregs[chrom],axis = 1).astype('int')
     enh_bins = np.mean(eregs[chrom],axis = 1).astype('int')
     
     enh_act = ek27ac[chrom]
     
-    prom_bins = (prom_bins/5000).astype('int')
-    enh_bins = (enh_bins/5000).astype('int')
+    prom_bins = (prom_bins/binsize).astype('int')
+    enh_bins = (enh_bins/binsize).astype('int')
     
-    if contacts[chrom] is not None:
-        clipped_contacts, logs = clip_contacts(prom_bins, enh_bins, contacts[chrom], gamma,chrom)
+    if contact_path is not None:
+        clipped_contacts, logs = clip_contacts(prom_bins, enh_bins, contacts, gamma,chrom)
         print("Clipped contact data for chromosome {}".format(chrom))
     else:
         clipped_contacts, logs = theoretical_contact_strengths(prom_bins, enh_bins, gamma,chrom)
@@ -60,16 +69,18 @@ def multi_chrom_ABC(pregs,
                     eregs,
                     ek27ac,
                     llinks,
-                    contacts,
-                    threshold,
-                    gamma
+                    contact_path,
+                    binsize,
+                    normalisation,
+                    gamma,
+                    threshold
                    ):
     
     outlinks = {}
     logs = []
     tot = 0
     fn = partial(single_chrom_ABC,pregs, prna, eregs,
-                 ek27ac,llinks, contacts, gamma)
+                 ek27ac,llinks, contact_path, binsize, normalisation, gamma)
     p = Pool()
     t_outs = p.imap(fn, (chrom for chrom in CHROMS))
     for t_out in t_outs:
@@ -114,12 +125,24 @@ if __name__ == "__main__":
                         default = "data/processed/links/linear_promoter_regulatory_element_links.npz"
                        )
     parser.add_argument("-c","--contacts",
-                        help="contact file in .npz format generated using nuc_tools bin_csv function and VC-SQRT normed using norm_contacts.py",
+                        help="contact file in .hic format generated using juicer from the Lieberman-Aiden Lab",
                         default = None)
     parser.add_argument("-o", "--outpath",
                         help="path of the output directory for the numpy archive detailing p-e enhancer links and ABC scores",
                         default = "data/processed/links/",
                         type=str)
+    parser.add_argument("-b", "--binsize",
+                        help="Binsize to bin our contact data at in basepairs",
+                        type=str,
+                        default = 5000)
+    parser.add_argument("-g", "--gamma",
+                        help="power law relationship to use when inferring contact strengths for sparse portions of the contact data",
+                        default = None,
+                        type = float)
+    parser.add_argument("-n", "--normalisation",
+                        help="What matrix normalisation to use for link prediction. Can choose from 'KR', 'NONE',VC','SQRT_VC'",
+                        type = str,
+                        default = 'KR')
     parser.add_argument("-r", "--rnaexpression",
                         help="optional path to a bed detailing the expression from the associated genes of each promoter. If provided then ABC links are only calculated for those promoters with positive rna-expression",
                         default = None
@@ -128,13 +151,9 @@ if __name__ == "__main__":
                         help="threshold of ABC scores to store. Only links with ABC scores > thresh will be stored",
                         default= 0.02,
                         type = float)
-    parser.add_argument("-g", "--gamma",
-                        help="power law relationship to use when inferring contact strengths for sparse portions of the contact data",
-                        default = None,
-                        type = float)
     parser.add_argument("-on","--outname",
                         help="If no contacts are provided then this provides an identifying tag for the experiments which the links are related to",
-                        default = "unspecified_condition",
+                        default = None,
                         type = str
                        )
     
@@ -198,39 +217,52 @@ if __name__ == "__main__":
                        shape = (pregs[key].shape[0],eregs[key].shape[0])) for key in llinks}
     
     
-    if args.contacts is None:
-        print("No contacts provided, proceeding with power-law relationship only")
-        contacts = {chrom: None for chrom in CHROMS}
-    else:
-        print("Loading normed contacts...")
-        contacts = np.load(args.contacts, allow_pickle = True)
-        contacts = {key: contacts[key][()] for key in contacts}
-    
     if args.gamma is None:
         if args.contacts is not None:
             print("No value for gamma provided. Inferring power law relationship from contacts...")
-            args.gamma = infer_gamma(contacts, binsize = 5e3, thresh = 1e6)
+            args.gamma = infer_gamma(args.contacts,
+                                     binsize = 5e3,
+                                     thresh = 1e6,
+                                     normalisation = args.normalisation)
             print("Inferred gamma: {}".format(args.gamma))
         else:
             print("No Gamma or contacts provided. Proceeding with Gamma = -1")
             args.gamma = -1
     
-    outlinks = multi_chrom_ABC(pregs, expressed_proms, eregs, estrength,
-                               llinks, contacts, args.threshold, args.gamma)
+    outlinks = multi_chrom_ABC(pregs,
+                               expressed_proms,
+                               eregs,
+                               estrength,
+                               llinks,
+                               args.contacts,
+                               args.binsize,
+                               args.normalisation,
+                               args.gamma,
+                               args.threshold)
     
-    if args.contacts is not None:
+    
+    if args.outname is not None:
+        print("Using provided name for contact file")
         np.savez(os.path.join(args.outpath,
-                              "ABC_EP_links_{}".format(os.path.split(args.contacts)[-1][:-4])
+                              "ABC_EP_links_{}_{}".format(os.path.split(args.k27ac)[-1].split(".")[0],
+                                                          args.outname)
+                             ),
+                 **outlinks
+                )
+    elif args.contacts is not None:
+        np.savez(os.path.join(args.outpath,
+                              "straw_ABC_EP_links_{}_{}".format(os.path.split(args.k27ac)[-1].split(".")[0],
+                                                          os.path.split(args.contacts)[-1].split(".")[0])
                              ),
                  **outlinks
                 )
     else:
-        print("No contacts provided, using provided name")
         np.savez(os.path.join(args.outpath,
-                              "ABC_EP_links_{}".format(args.outname)
+                              "ABC_EP_links_{}".format(os.path.split(args.k27ac)[-1].split(".")[0])
                              ),
                  **outlinks
                 )
+        
                               
                               
                               

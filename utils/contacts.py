@@ -1,21 +1,27 @@
 import numpy as np
+from .misc import safe_divide
 from scipy.sparse import coo_matrix
 from scipy import sparse
 import pandas as pd
 import math
 import numpy as np
 from numpy import int32
+import itertools
+from scipy.sparse import coo_matrix as coo
 
 CHR_KEY_SEP = ' '
-CHROMS = [str(i+1) for i in np.arange(19)] + ['X']
+DEFAULT_BIN_SIZE = 5
+DEFAULT_MIN_BINS = 2
+MIN_TRANS_COUNT = 5
+CHROMS = ["chr"+str(i+1) for i in np.arange(19)] + ['chrX']
 
 def load_npz_contacts(file_path, 
-        store_sparse=False,
-        display_counts=False,
-        normalize = False,
-        cut_centromeres = True,
-        cis = False
-        ):
+                      store_sparse=False,
+                      display_counts=False,
+                      normalize = False,
+                      cut_centromeres = True,
+                      chrompairs = [pair for pair in itertools.permutations(CHROMS,2)] + [(chrom, chrom) for chrom in CHROMS]
+                     ):
     '''
     Utility function to load a .npz file containing contact information from a Hi-C experiment. 
     
@@ -43,6 +49,17 @@ def load_npz_contacts(file_path,
                                  start_A <= b <= end_A
     - contacts: Dictionary of matrices detailing contacts between chromosome pairs
     '''
+    for idx, pair in enumerate(chrompairs):
+        c1, c2 = pair
+        if "chr" not in c1:
+            c1 = "chr"+c1
+        if "chr" not in c2:
+            c2 = "chr"+c2
+        
+        chrompairs[idx] = (c1,c2)
+        
+    allchroms = list(set([pair[0] for pair in chrompairs] + [pair[1] for pair in chrompairs]))
+            
     file_dict = np.load(file_path, allow_pickle=True, encoding = 'bytes')
   
     chromo_limits = {}
@@ -53,8 +70,9 @@ def load_npz_contacts(file_path,
     chromo_hists = {}
     cis_chromo_hists = {}
 
-    pair_keys = [key for key in file_dict.keys() if "cdata" in key]
-    nonpair_keys = [key for key in file_dict.keys() if (CHR_KEY_SEP not in key) and (key != 'params')]
+    pair_keys = [key for key in file_dict.keys() if "cdata" in key and (key.split(CHR_KEY_SEP)[0],
+                                                                        key.split(CHR_KEY_SEP)[1]) in chrompairs]
+    nonpair_keys = [key for key in file_dict.keys() if (CHR_KEY_SEP not in key) and (key != 'params') and key in allchroms]
   
     for key in nonpair_keys:
         offset, count = file_dict[key]
@@ -70,8 +88,6 @@ def load_npz_contacts(file_path,
     for key in sorted(pair_keys):
         chr_a, chr_b, _ = key.split(CHR_KEY_SEP)
         
-        if cis and chr_a != chr_b:
-            continue
         shape = file_dict[chr_a + CHR_KEY_SEP + chr_b + CHR_KEY_SEP + "shape"]
         mtype = "CSR"
         try:
@@ -97,9 +113,8 @@ def load_npz_contacts(file_path,
 
             if not np.all(mat[rows, cols] == mat[cols, rows]): # Not symmetric
                 mat += mat.T
-          
         contacts[(chr_a, chr_b)] = mat  
-     
+    
     #Chromosomes in our dataset
     chroms = chromo_limits.keys()
     if cut_centromeres:
@@ -148,24 +163,121 @@ def load_npz_contacts(file_path,
  
         plt.show()
 
-    
     return bin_size, chromo_limits, contacts
 
 
+def save_npz_contacts(contacts, outpath, 
+                      binsize = DEFAULT_BIN_SIZE,
+                      minbincount= DEFAULT_MIN_BINS,
+                      chr_key_sep = CHR_KEY_SEP):
+    out = {}
+    for chromo_key in contacts:
+        chr_a, chr_b = chromo_key
+        if "chr" not in chr_a:
+            chr_a = "chr" + chr_a
+        if "chr" not in chr_b:
+            chr_b = "chr" + chr_b
+        data_key = chr_a + chr_key_sep + chr_b + chr_key_sep + "cdata"    
+      
+        if chr_a == chr_b:
+            indices_key = chr_a + chr_key_sep + chr_b + chr_key_sep + "ind"
+            indptr_key = chr_a + chr_key_sep + chr_b + chr_key_sep + "indptr"
+            shape_key = chr_a + chr_key_sep + chr_b + chr_key_sep + "shape"
+
+            cdata = contacts[chromo_key].tocsr()
+            out[data_key] = cdata.data.astype('float')
+            out[indices_key] = cdata.indices.astype('int32')
+            out[indptr_key] = cdata.indptr.astype('int32')
+            out[shape_key] = cdata.shape
+
+        else:
+            row_key = chr_a + chr_key_sep + chr_b + chr_key_sep + "row"
+            col_key = chr_a + chr_key_sep + chr_b + chr_key_sep + "col"
+            shape_key = chr_a + chr_key_sep + chr_b + chr_key_sep + "shape"
+
+            cdata = contacts[chromo_key]
+            out[data_key] = cdata.data.astype('float')
+            out[row_key] = cdata.row.astype('int32')
+            out[col_key] = cdata.col.astype('int32')
+            out[shape_key] = cdata.shape
+        
+        # Store bin offsets and spans
+        out[chr_a] = np.array([0, cdata.shape[0]])
+        out[chr_b] = np.array([0, cdata.shape[1]])
+    
+    out['params'] = np.array([binsize, minbincount])
+        
+     
+    np.savez_compressed(outpath, 
+                        **out)
+                      
+
+def row_col_sums(contacts, chroms = CHROMS):
+    chromshapes = {chrom: contacts[(chrom,chrom)].shape[0] for chrom in chroms}
+    
+    sums = {chrom: np.zeros((chromshapes[chrom],1)) for chrom in chroms}
+
+    for key in contacts:
+        c1,c2 = key
+        if c1 in chroms and c2 in chroms:
+            sums[c1] += np.sum(contacts[key],axis =1)
+            sums[c2] += np.sum(contacts[key],axis = 0).T
+        if c1 not in chroms:
+            sums[c2] += np.sum(contacts[key],axis =0).T
+        if c2 not in chroms:
+            sums[c1] += np.sum(contacts[key],axis = 1) 
+
+    return sums
+
+def vc_sqrt_norm(contact_path, sums, key):
+    c1,c2 = key
+    print('Starting chromosome pair {}-{}'.format(c1,c2))
+    _, _, contacts = load_npz_contacts(contact_path,store_sparse=True,
+                                      display_counts=False,
+                                      normalize = False,
+                                      cut_centromeres = False,
+                                      chrompairs = [key]
+                                     )
+    contacts = contacts[key].tocoo()
+    
+    norms = np.dot(sums[c1], sums[c2].T)
+    #goodcoverage = {c: np.where(np.array(sums[c]>0)[0,:])[0] for c in [c1,c2]}
+    #norms[np.ix_(goodcoverage[c1],goodcoverage[c2])] = np.sqrt(1./norms[np.ix_(goodcoverage[c1],goodcoverage[c2])])
+    norms[norms>0] = np.sqrt(1./norms[norms>0])
+    
+    print("Caculated row-sum coverage norms, chromosome pair {}-{}".format(c1,c2))
+    newdata = np.multiply(contacts.data, [norms[contacts.row[idx],
+                                                contacts.col[idx]] for idx in np.arange(contacts.row.shape[0])])
+
+    
+    print("Adjusted raw data, chromosome pair {}-{}. Converting to COO format".format(c1,c2))
+    mat = coo((newdata, (contacts.row, contacts.col)), shape=contacts.shape)
+    print("Converted VC normed data to COO format, chromosome pair {}-{}".format(c1,c2))
+    print("Done chromosome pair {}-{}".format(c1,c2))
+    return key, mat
+
+
 from statsmodels import regression
+from statsmodels.api import add_constant
 from multiprocessing import Pool
 from functools import partial
 
-def get_mean_contact_strength_at_offset_(contacts, offsets, chrom):
-    tempmat = contacts[chrom].todense()
+def get_mean_contact_strength_at_offset_(contact_path, offsets, chrom):
+    _, _, contacts = load_npz_contacts(contact_path,store_sparse=True,
+                                      display_counts=False,
+                                      normalize = False,
+                                      cut_centromeres = False,
+                                      chrompairs = [(chrom,chrom)]
+                                     )
+    tempmat = contacts[(chrom,chrom)].tocoo().todense()
     return np.array([np.mean(np.diagonal(tempmat, o_idx)) for o_idx in offsets])
 
-def infer_gamma(contacts, binsize = 5e3, thresh = 1e6, chroms = CHROMS, verbose = True):
+def infer_gamma(contact_path, binsize =5e3, thresh = 1e6, chroms = CHROMS, verbose = True):
     
     dists = (np.arange(binsize, thresh, binsize)/binsize).astype('int')
     strengths = np.zeros(dists.shape)
     p = Pool()
-    fn = partial(get_mean_contact_strength_at_offset_, contacts, dists)
+    fn = partial(get_mean_contact_strength_at_offset_, contact_path, dists)
     t_outs = p.imap(fn, (chrom for chrom in chroms))
     for t_out in t_outs:
         strengths += (1/len(chroms))*t_out
@@ -174,8 +286,9 @@ def infer_gamma(contacts, binsize = 5e3, thresh = 1e6, chroms = CHROMS, verbose 
     y = np.log(strengths)[1:]
     
     # Running the linear regression
-    model = regression.linear_model.OLS(y, X.reshape(-1,1)).fit()
-    b = model.params[0]
+    model = regression.linear_model.OLS(y, add_constant(X.reshape(-1,1))).fit()
+    a = model.params[0]
+    b = model.params[1]
     
     if verbose:
         print("Gamma regression summary:")

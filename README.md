@@ -2,23 +2,56 @@
 
 Due to a slight lack of datasources currently available for the cell-types/culture conditions in which I am interested, this repo will try to execute a minimally modified version of the Activity-By-Contact (ABC) model presented in https://www.nature.com/articles/s41588-019-0538-0#Sec1 for predicting enhancer promoter functional contacts based off of Hi-C and ChIPseq data. 
 
-BACKGROUND:
-During the onset of differentiation, mouse embryonic stem cells (mESCs) have been shown to pass through intermediate states of pluripotency which have different functional capacities as cells commit to particulaer lineages. The very earliest of these intermediate states is thought to be the intermediate state formed between the so-called 'naive' and 'primed' pluripotency stages. While naive stem cells are able to functionally integrate into chimeras and contribute to all lineages within the body as well as self-renew indefinitely, primed cells represent a more functionally commited group of cells with reduced ability to contribute to all lineages. Furthermore, conversion efficiency for the primed-naive transition is extremely low. Between these two states there has been shown to exist an intermediate state known as 'formative' pluripotent stem cells. These cells are thought to be the earliest non-naive mESC and are functionally different in terms of gene expression and self-renewal capacity. 
+\subsection{Requirements}
 
-It has been previously shown by multiple sources that formative cells seem to have a very interesting state of chromatin involving changes in dynamics of methyaltion, heterochromatin formation, distribution of histone marks and Polycomb Repressive Complex (PRC) binding. Changes in the chromatin landscape are particularly evident in the distribution of different types of enhancers along the genome as well as the large growth in the number of bivalent promoters evident during the transition. Since enhancers are thought to regulate gene expression through physical interactions with promoters, it would therefore by highly useful to characterise putative enhancer-promoter interactions in naive, formative and primed mESCs to identify interactions which are gained/lost during the first stages of the exit from naive pluripotency. Such a list could be used to identify and/or test models which attempt to explain the coordinated transcriptional changes which are observed over this timecourse. 
+- numpy
+- pandas
+- itertools
+- cython
+- straw
 
-Ideally, to identify interactions such as this we would use the previously published model (linked above) which requires both DHS and K27ac datatracks genome-wide for all the developmental timepoints in which we are interested. Since my lab (Laue Lab, Dept of Biochemistry, University of Cambridge) specialises in single-cell Hi-C a future extension would also be to incorporate these single-cell datasets for a more fine scale view of enhancer-promoter interactions. However, DHS datatracks aren't currently available for all three (naive, primed and formative) developmental timepoints and this module therefore aims to execute a minimally modified version of the ABC model using both k27ac ChIPseq signal and population Hi-C.
+\subsection{Required input files}:
 
-File formats:
+- Transcript Start Sites (TSS) (.tsv with columns ['chrom','transcrip_start','transcript_end','strand','id'] detailing the genomic positions of each TSS we are profiling) 
+- H3K27ac ChIPseq file(s) (.narrowPeak format files for the approximation of regulatory element regions and assessment of their strength)
 
-- enhancer regions (.csv with columns ['chrom','start','end','id'] detailing the genomic positions of each enhancer as well as some id to keep track of enhancers) 
-- promoter regions/info (.csv with collumns ['chrom','start','end','id'] detailing the genomic position of each promoter as well as the associated gene name)
-- per-timepoint gene expression (.csv per timepoint, single collumn with each row giving the expression value for the gene associated with each promoter at that timepoint)
-- per-timepoint, per-enhancer K27ac scores (.csv per timepoint, single collumn with each row giving the total number of k27ac reads across an enhancer)
-- Population Hi-C binned at 5kb resolution (.npz format generated using a .ncc file and the ncc_bin feature from the nuc_tools module - https://github.com/tjs23/nuc_tools)
+\subsection{Optional input files}: 
+- Hi-C data (.hic format generated using either Juicer https://github.com/aidenlab/juicer/wiki or Pre https://github.com/aidenlab/juicer/wiki/Pre. NOTE: This algorithm assumes sufficient unique contacts to bin the genome at 5kb resolution)
 
-scripts:
+\subsection{scripts}:
 
-- norm_contacts.py - performs SQRT-VC normalisation (see Rao et al. 2014 - https://www.cell.com/cms/10.1016/j.cell.2014.11.021/attachment/d3c6dcd8-c799-4f68-bbe4-201be54960b5/mmc1 ) on the cis contact maps detailed within the raw population Hi-C matrices. 
-- linear_links.py - creates master list of possible enhancer promoter links by linking those promoters with enhancers that fall within some linear threshold distance along the chromatin backbone. Defaults to 5Mb. 
-- ABC_score.py - inputting ~KW-normalised per-chromosome sparse hi-C matrices, promoter info, enhancer info, promoter expression and enhancer k27ac scores, calculates and stores a file detailing enhancer-promoter links with an ABC score above a given threshold from the master list of linear enhancer-promoter links.  
+- make_promoter_info.py - uses the TSS inputs to create promoter regions.
+- make_candidate_regions.py - Generates putative candidate elements and their strengths using the promoter_info produced using make_promoter_info.py as well as any number of H3K27ac narrowPeak files.
+- linear_links.py - creates master list of possible enhancer promoter links by linking those promoters with regulatory that fall within some linear threshold distance along the chromatin backbone. Defaults to 5Mb. 
+- ABC_score.py - inputting ~KW-normalised per-chromosome sparse hi-C matrices, promoter info, enhancer info, promoter expression and enhancer k27ac scores, calculates and stores a file detailing enhancer-promoter links with an ABC score above a given threshold from the master list of linear enhancer-promoter links. 
+
+\subsection{suggested directory structure}:
+
+/topdir/
+/topdir/make_promoter_info.py
+/topdir/make_candidate_regions.py
+/topdir/linear_links.py
+/topdir/ABC_score.py
+
+
+/topdir/utils/
+
+
+/topdir/data/
+/topdir/data/processed/
+/topdir/data/processed/links/
+
+/topdir/data/raw/
+/topdir/data/raw/input.hic
+/topdir/data/raw/TSS_sites.tsv
+/topdir/data/raw/tracks/{narrowPeak files}
+
+\subsection{Example Usage:}
+With the directory structure above an example usage would be:
+python make_promoter_info.py --tss_sites /topdir/data/raw/TSS_sites.tsv --outpath /topdir/data/processed/
+
+python make_candidate_elements.py --tss_sites /topdir/data/raw/TSS_sites.tsv --k27ac_path /topdir/data/raw/tracks/ --extension narrowPeak --outpath /topdir/data/processed/
+
+python linear_links.py --regions1 /topdir/data/processed/promoter_info.csv --regions2 /topdir/data/processed/candidate_elements.csv --outpath data/processed/links/ --region1names promoter --region2names regulatory_element --distance_thresh 5000
+
+python ABC_score.py --promoters /topdir/data/processed/promoter_info.csv --regelements /topdir/data/processed/candidate_elements.csv --k27ac /topdir/data/raw/tracks/example.narrowPeak --linearlinks /topdir/data/processed/links/linear_promoter_regulatory_element_links.npz --contacts /topdir/data/raw/input.hic --binsize 5000 --normalisation KR --threshold 0.1 --outpath /topdir/data/processed/links 

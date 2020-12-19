@@ -5,7 +5,7 @@ import pandas as pd
 import pyBigWig as pBW
 import math
 
-CHROMS = [str(i+1) for i in np.arange(19)] + ['X']
+CHROMS = [str(i+1) for i in np.arange(19)] + ['X','Y']
 
 ##I/O UTILITIES#################################################################
 ################################################################################

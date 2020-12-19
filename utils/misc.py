@@ -22,14 +22,14 @@ def process_regions(path, **kwargs):
     regs = pd.read_csv(path,
                      sep = "\t",
                      na_filter = False,
-                     dtype = {"chr":"str",
+                     dtype = {"chrom":"str",
                               "start":"int64",
                               "end":"int64",
                               "id": "str"
                              },
                        **kwargs
                     )
-    
+    regs['chrom'] = regs['chrom'].astype('str')
     return regs
 
 def parse_bed(bed,
@@ -43,11 +43,14 @@ def parse_bed(bed,
                      **kwargs
                     )[['chrom','start','end']]
     
+    df['chrom'] = df['chrom'].astype('str')
+    
     x1 = split_by_chr(df)
     
     return x1
 
-def buffer_vec(vec, buffer = int(1e3)):
+def buffer_vec(vec, buffer = int(1e3), dtype = 'int32'):
+    out = np.zeros((vec.shape[0],2)).astype(dtype)
     out[:,0] = vec - buffer
     out[:,1] = vec + buffer
     

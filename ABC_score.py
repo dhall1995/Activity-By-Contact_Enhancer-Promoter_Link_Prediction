@@ -10,7 +10,7 @@ from scipy.sparse import coo_matrix as coo
 from multiprocessing import Pool
 from functools import partial
 
-CHROMS = [str(i+1) for i in np.arange(19)] + ['X']
+CHROMS = [str(i+1) for i in np.arange(19)] + ['X','Y']
     
 def single_chrom_ABC(pregs,
                      prna,
@@ -140,7 +140,7 @@ if __name__ == "__main__":
                         default = None,
                         type = float)
     parser.add_argument("-n", "--normalisation",
-                        help="What matrix normalisation to use for link prediction. Can choose from 'KR', 'NONE',VC','SQRT_VC'",
+                        help="What matrix normalisation to use for link prediction. Can choose from 'KR', 'NONE',VC','VC_SQRT'",
                         type = str,
                         default = 'KR')
     parser.add_argument("-r", "--rnaexpression",
@@ -170,12 +170,22 @@ if __name__ == "__main__":
     
     if args.rnaexpression is not None:
         try:
-            rna = dtrvp("rna").from_bed(args.rnaexpression,
-                                    chrom_col = 0,
-                                    region_cols = (1,2),
-                                    value_col = 6,
-                                    header = None)
-            expressed_proms = {chrom: rna.stats(chrom, pregs[chrom])>0 for chrom in pregs}
+            print("Filtering promoters by expression")
+            rna = pd.read_csv(args.rnaexpression, 
+                              sep = "\t",
+                              dtype = {"Chromosome/scaffold name":"str",
+                                       "Transcription start site (TSS)":"int64",
+                                       "Expression":"float64",
+                                       "Gene stable ID": "str"
+                                      }
+                             )
+            rexp = split_by_chr(rna)
+            rexp = {chrom: rexp[chrom][:,1] > 0 for chrom in pregs}
+            n1 = np.sum([rexp[chrom].shape[0] for chrom in rexp])
+            n2 = np.sum([np.sum(rexp[chrom]>0) for chrom in rexp])
+            print("Filtered from {} to {} promoters".format(n1, n2))
+            
+            expressed_proms = {chrom: rexp[chrom] > thresh for chrom in rexp}
         except:
             print("Couldn't create RNA datatrack from provided file, using k27ac datatrack to estimate expressed genes")
             promk27ac = {chrom: k27ac.stats(chrom, pregs[chrom], stats_type = 'sum') for chrom in pregs}
@@ -251,7 +261,7 @@ if __name__ == "__main__":
                 )
     elif args.contacts is not None:
         np.savez(os.path.join(args.outpath,
-                              "straw_ABC_EP_links_{}_{}".format(os.path.split(args.k27ac)[-1].split(".")[0],
+                              "ABC_EP_links_{}_{}".format(os.path.split(args.k27ac)[-1].split(".")[0],
                                                           os.path.split(args.contacts)[-1].split(".")[0])
                              ),
                  **outlinks

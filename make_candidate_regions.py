@@ -1,4 +1,4 @@
-from utils.misc import split_by_chr, to_bool
+from utils.misc import split_by_chr, to_bool, buffer_vec
 from utils.cython.dtrack_utils import non_overlapping, pairRegionsIntersection
 from utils.links import link_features
 from utils.datatracks import DataTrack_rvp as dtrvp
@@ -7,19 +7,12 @@ import numpy as np
 import pandas as pd
 from multiprocessing import Pool
 from functools import partial
-CHROMS = [str(i+1) for i in np.arange(19)] + ['X']
+CHROMS = [str(i+1) for i in np.arange(19)] + ['X','Y']
 
 
-def _single_chrom_candidate_elements_from_tracks(tracks, transcripts, strands, gene_ids,chrom):
+def _single_chrom_candidate_elements_from_tracks(tracks, promoters, transcripts, gene_ids,chrom):
     print("Calculating promoter regions, chromosome {}..".format(chrom))
-    promoters = np.zeros(transcripts[chrom].shape)
-    for idx,prom in enumerate(promoters):
-        if strands[chrom][idx] == 1:
-            promoters[idx,:] = [transcripts[chrom][idx,0]-250, transcripts[chrom][idx,0]+250]
-        else:
-            promoters[idx,:] = [transcripts[chrom][idx,1]-250, transcripts[chrom][idx,1]+250]
-        
-    promoters = promoters.astype('int32')
+    promoters[chrom] = promoters[chrom].astype('int32')
     transcripts[chrom] = transcripts[chrom].astype('int32')
         
         
@@ -36,7 +29,7 @@ def _single_chrom_candidate_elements_from_tracks(tracks, transcripts, strands, g
     #get peak lengths
     diffs = np.diff(regs, axis = 1)
     #discard peaks <300bp in length
-    regs = np.append(regs[diffs[:,0] > 300,:], promoters, axis = 0)
+    regs = np.append(regs[diffs[:,0] > 300,:], promoters[chrom], axis = 0)
     regs = non_overlapping(regs.astype('int32'))
     
     print("Calculating reference k27ac strengths for each candidate element on chromosome {}...".format(chrom))
@@ -56,7 +49,7 @@ def _single_chrom_candidate_elements_from_tracks(tracks, transcripts, strands, g
     
     print("Separating promoter, genic and intergenic candidate elements, chromosome {}...".format(chrom))
     candidate_elements['promoter_overlaps'] = pairRegionsIntersection(candidate_elements['regions']['unclassified'],
-                                                                      promoters,
+                                                                      promoters[chrom],
                                                                       allow_partial = True)
     candidate_elements['promoter_overlaps'] = to_bool(candidate_elements['promoter_overlaps'],
                                                       candidate_elements['regions']['unclassified'].shape[0])
@@ -84,7 +77,7 @@ def _single_chrom_candidate_elements_from_tracks(tracks, transcripts, strands, g
                                                                    transcripts[chrom])
     print("Promoter links chromosome {}...".format(chrom))
     candidate_elements['element_promoter_links'] = link_features(candidate_elements['regions']['promoter'],
-                                                                 promoters)
+                                                                 promoters[chrom])
     
     print("Assigning IDs chromosome {}...".format(chrom))
     candidate_elements['ids'] = {cond: [] for cond in conds}
@@ -113,8 +106,8 @@ def _single_chrom_candidate_elements_from_tracks(tracks, transcripts, strands, g
     return out, chrom
 
 def candidate_elements_from_tracks(tracks,
+                                   promoters,
                                    transcripts,
-                                   strands,
                                    gene_ids,
                                    chroms = CHROMS):
     
@@ -122,7 +115,7 @@ def candidate_elements_from_tracks(tracks,
            'strength': {chrom: None for chrom in chroms},
            'ids': {chrom: None for chrom in chroms}}
 
-    fn = partial(_single_chrom_candidate_elements_from_tracks,tracks, transcripts, strands, gene_ids)
+    fn = partial(_single_chrom_candidate_elements_from_tracks,tracks, promoters, transcripts, gene_ids)
     p = Pool()
     t_outs = p.imap(fn, (chrom for chrom in chroms))
     for t_out in t_outs:
@@ -146,10 +139,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Generate candidate regulatory element regions using k27ac ChIP data and TSS sites', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument("-t","--tss_sites",
                         help="bed file containing TSS sites. Should have columns: chrom, transcript_start, transcript_end, strand, id",
-                        default = "data/raw/promoters/ensembl_TSS_sites_GRCm38_p2.csv",
+                        default = "data/raw/ensembl_TSS_sites_GRCm38_p6.tsv",
                         type=str)
     parser.add_argument("-k","--k27ac_path", nargs="+",
-                        help="Path to folder containing k27ac ChIP data in narrowPeak format. All narrowPeak files in the folder will be treated as files with which to construct the reference enhancer strengths. These strengths will be used in downstream analysis to quantile normalise k27ac ChIP from individual timepoints. This assumes non-quantiative ChIP data")
+                        help="Path to folder containing k27ac ChIP data in narrowPeak format. All narrowPeak files in the folder will be treated as files with which to construct the reference enhancer strengths. These strengths will be used in downstream analysis to quantile normalise k27ac ChIP from individual timepoints. This assumes non-quantiative ChIP data"
+                       )
     parser.add_argument('-e', '--extension', default='narrowPeak', help='File extension to filter by.')
     parser.add_argument('-o','--outpath',default="data/processed/", help="Path to save candidate element information in")
     
@@ -166,18 +160,24 @@ if __name__ == "__main__":
             
     k27ac_files = list(k27ac_files)
         
-    tss_regions = pd.read_csv(args.tss_sites, sep = "\t",
+    TSS = pd.read_csv(args.tss_sites, sep = "\t",
                               na_filter = False,
-                              dtype = {"chrom":"str",
-                                       "transcript_start":"int64",
-                                       "transcript_end":"int64",
-                                       "strand":"int64",
-                                       "id": "str"
+                              dtype = {"Chromosome/scaffold name":"str",
+                                       "Transcription start site (TSS)":"int64",
+                                       "Transcript start":"int64",
+                                       "Transcript end":"int64",
+                                       "Gene stable ID": "str"
                                       }
                              )
-    transcripts = split_by_chr(tss_regions, accepted_cols = np.array([1,2]))
-    strands = split_by_chr(tss_regions, accepted_cols = np.array([3]))
-    gene_ids = split_by_chr(tss_regions, accepted_cols = np.array([4]))
+    TSS = TSS[[item in CHROMS for item in TSS['Chromosome/scaffold name'].values]]
+     
+    TSSregs = buffer_vec(TSS["Transcription start site (TSS)"].values, buffer = 500)
+    TSS['Promoter start'] = TSSregs[:,0]
+    TSS['Promoter end'] = TSSregs[:,1]
+    
+    promoters = split_by_chr(TSS,accepted_cols = np.array([5,6]))
+    transcripts = split_by_chr(TSS, accepted_cols = np.array([2,3]))
+    gene_ids = split_by_chr(TSS, accepted_cols = np.array([4]))
     
     print("Got transcripts, strands and IDs")
     print("Making k27ac tracks...")
@@ -185,7 +185,7 @@ if __name__ == "__main__":
                                             region_cols=(1,2),value_col=6) for path in k27ac_files]
     
     print("Made k27ac tracks.")
-    candidate_elements = candidate_elements_from_tracks(k27ac_tracks, transcripts, strands, gene_ids)
+    candidate_elements = candidate_elements_from_tracks(k27ac_tracks, promoters, transcripts, gene_ids)
     candidate_chroms = {chrom: np.array([chrom for reg in candidate_elements['regions'][chrom]]) for chrom in CHROMS}
     
     

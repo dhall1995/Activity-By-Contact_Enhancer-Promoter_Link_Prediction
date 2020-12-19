@@ -11,7 +11,7 @@ import os
 import glob
 from scipy.sparse import coo_matrix as coo
 
-
+CHROMS = [str(i+1) for i in np.arange(19)] + ['X','Y']
 def single_chrom_links(regs1,
                        regs2,
                        thresh,
@@ -37,7 +37,7 @@ def multi_chrom_links(regs1,
     tot = 0
     fn = partial(single_chrom_links,regs1,regs2, thresh)
     p = Pool()
-    t_outs = p.imap(fn, (chrom for chrom in regs1))
+    t_outs = p.imap(fn, (chrom for chrom in CHROMS))
     for t_out in t_outs:
         links = t_out[0]
         chrom = t_out[1]
@@ -75,8 +75,8 @@ if __name__ == "__main__":
                         help="name of the second regions",
                         type = str)
     parser.add_argument("-t", "--distance_thresh",
-                        default = 5000,
-                        help = "distance threshold to consider links, in kb. defaults to 5000 (5Mb)",
+                        default = 2500,
+                        help = "distance threshold to consider links, in kb. defaults to 2500 (5Mb)",
                         type = int)
     
     args = parser.parse_args()

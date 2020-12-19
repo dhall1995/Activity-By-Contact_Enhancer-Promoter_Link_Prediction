@@ -19,6 +19,13 @@ def straw_extract_chr_matrix(hic_file,
     data = np.array(result[2] + result[2])
     goodidxs = ~np.isnan(data)
 
+    if np.sum(goodidxs) == 0:
+        print("Unable to get good data (no valid contact pairs) for requested normalisation on chromosome {}, using SQRT_VC instead".format(chrom))
+        result = straw.straw('VC_SQRT',hic_file,str(chrom), str(chrom),'BP',binsize)
+        data = np.array(result[2] + result[2])
+        goodidxs = ~np.isnan(data)
+        print("\t{} pairs covered with SQRT_VC normalisation".format(np.sum(goodidxs)))
+        
     row  = np.array(result[0] + result[1])
     row = row[goodidxs]
     rowmin = np.min(row)

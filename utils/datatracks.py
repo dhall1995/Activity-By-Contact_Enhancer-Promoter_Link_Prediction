@@ -137,7 +137,7 @@ def rvps_from_bed(file_path,
     if value_col is not None:
         tmpvals = split_by_chr(x, chrom_col = chrom_col, accepted_cols = [value_col])
     else:
-        tmpvals = {key: np.full((tmpregs[key].shape[0],), value_fill) for key in tmpregs}
+        tmpvals = {key: np.full((tmpregs[key].shape[0],1), value_fill) for key in tmpregs}
     
     tmpIDs = {}
     if ID_col is not None:
@@ -875,6 +875,7 @@ class DataTrack_bigwig(DataTrack):
              mids,
              buffer = 1000,
              binSize = 1,
+             stats_type = 'mean',
              **kwargs):
         '''
         Evaluate our datatrack for all basepairs in a given region on a given chromosome
@@ -892,6 +893,7 @@ class DataTrack_bigwig(DataTrack):
             out.append(self.data.stats(chr_name,
                                        mid-buffer,
                                        mid+buffer,
+                                       type = stats_type,
                                        nBins = int(2*buffer/binSize),
                                        **kwargs))
         
@@ -901,6 +903,7 @@ class DataTrack_bigwig(DataTrack):
               chr_name, 
               intervals,
               fill_nan = 0,
+              stats_type = 'mean',
               **kwargs):
         '''
         Evaluate our datatrack for all basepairs in a given region interval
@@ -916,6 +919,7 @@ class DataTrack_bigwig(DataTrack):
             num = self.data.stats(chr_name,
                                   int(interval[0]),
                                   int(interval[1]),
+                                  type = stats_type
                                   **kwargs)
             for idx, item in enumerate(num):
                 if item is None:

@@ -17,8 +17,15 @@ def single_chrom_links(regs1,
                        thresh,
                        chrom):
     
-    vec1 = buffer_vec(np.mean(regs1[chrom], axis = 1), buffer = thresh)
-    vec2 = buffer_vec(np.mean(regs2[chrom], axis = 1), buffer = thresh)
+    if chrom in regs1:
+        vec1 = buffer_vec(np.mean(regs1[chrom], axis = 1), buffer = thresh)
+    else:
+        vec1 = np.zeros((1,2)).astype('int32')
+        
+    if chrom in regs2:
+        vec2 = buffer_vec(np.mean(regs2[chrom], axis = 1), buffer = thresh)
+    else:
+        vec2 = np.zeros((1,2)).astype('int32')
     
     all_links = link_features(vec1, vec2)
     
@@ -55,11 +62,11 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description='Read in a file or set of files, and return the result.', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument("-r1","--regions1",
-                        default = "data/processed/promoter_info.csv",
+                        default = "data/processed/KO_promoter_info.csv",
                         help="bed file containing the first set of regions. Should have columns: chr, start, end",
                         type=str)
     parser.add_argument("-r2","--regions2",
-                        default = "data/processed/candidate_elements.csv",
+                        default = "data/processed/KO_candidate_elements.csv",
                         help="bed file containing the second set of regions. Should have columns: chr, start, end",
                         type=str)
     parser.add_argument("-o", "--outpath",
@@ -67,11 +74,11 @@ if __name__ == "__main__":
                         default = "data/processed/links/",
                         type=str)
     parser.add_argument("-r1n", "--region1names",
-                        default = "promoter",
+                        default = "KO_promoter",
                         help="name of the first regions",
                         type = str)
     parser.add_argument("-r2n", "--region2names",
-                        default = "regulatory_element",
+                        default = "KO_regulatory_element",
                         help="name of the second regions",
                         type = str)
     parser.add_argument("-t", "--distance_thresh",

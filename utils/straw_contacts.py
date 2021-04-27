@@ -133,8 +133,9 @@ def clip_contacts(prom_bins,
     
     
     #replace the zeros with inferred/theoretical contact strengths
-    print("Adjusting contact strength for sparse portions of contact data in chromosome {}".format(chrom))
-    outprint = ["Summary stats for clipped contacts chromosome {}:".format(chrom),
+    try:
+        print("Adjusting contact strength for sparse portions of contact data in chromosome {}".format(chrom))
+        outprint = ["Summary stats for clipped contacts chromosome {}:".format(chrom),
                 "Number of zeros: {}".format(np.sum(clipped_contacts == 0)),
                 "Median nonzero value: {}".format(np.median(clipped_contacts[clipped_contacts>0])),
                 "Mean nonzero value: {}".format(np.mean(clipped_contacts[clipped_contacts>0])),
@@ -150,7 +151,9 @@ def clip_contacts(prom_bins,
                 "######################################",
                 "######################################"
                ]
-    logs = "\n".join(outprint)
+        logs = "\n".join(outprint)
+    except:
+        logs = ""
           
     clipped_contacts += ecs
     clipped_contacts[clipped_contacts>100] = 100

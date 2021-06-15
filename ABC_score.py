@@ -155,7 +155,7 @@ if __name__ == "__main__":
                         type=str)
     parser.add_argument("-b", "--binsize",
                         help="Binsize to bin our contact data at in basepairs",
-                        type=str,
+                        type=int,
                         default = 5000)
     parser.add_argument("-g", 
                         "--gamma",

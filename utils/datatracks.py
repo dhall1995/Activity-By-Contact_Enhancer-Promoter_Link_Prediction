@@ -1,4 +1,4 @@
-from .cython.dtrack_utils import binrvps_constantbins, binrvps, pairRegionsIntersection, rvps_to_rvps, binrvps_multi_interval
+from dtrack_utils import binrvps_constantbins, binrvps, pairRegionsIntersection, rvps_to_rvps, binrvps_multi_interval
 from .misc import split_by_chr
 import numpy as np
 import pandas as pd

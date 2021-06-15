@@ -1,4 +1,4 @@
-from .cython.link_utils import link_parent_and_child_regions, link_parent_and_child_multi_regions
+from link_utils import link_parent_and_child_regions, link_parent_and_child_multi_regions
 import numpy as np
 
 def link_features(parent_regions,

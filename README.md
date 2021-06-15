@@ -1,4 +1,4 @@
-Due to a slight lack of datasources currently available for the cell-types/culture conditions in which I am interested, this repo will try to execute a minimally modified version of the Activity-By-Contact (ABC) model presented in https://www.nature.com/articles/s41588-019-0538-0#Sec1 for predicting enhancer promoter functional contacts based off of Hi-C and ChIPseq data. 
+This repo executes a minimally modified version of the Activity-By-Contact (ABC) model presented in https://www.nature.com/articles/s41588-019-0538-0#Sec1 for predicting enhancer promoter functional contacts based off of Hi-C and ChIPseq data. The modifications are due to lack of good datasources for ATAC-seq data in Mbd3KO cell lines.
 
 ## Requirements
 
@@ -6,7 +6,20 @@ Due to a slight lack of datasources currently available for the cell-types/cultu
 - pandas
 - itertools
 - cython
-- straw
+- straw (https://github.com/aidenlab/straw/wiki/Python)
+- tqdm (https://tqdm.github.io/)
+- pyBigWig (https://github.com/deeptools/pyBigWig)
+
+### Installation
+From the main directory run:
+
+```bash
+python cython_setup.py build_ext --inplace
+```
+
+
+### Notes
+I use 0-indexing of columns. This is relevant, for example when running ABC_score.py
 
 ### Required input files:
 

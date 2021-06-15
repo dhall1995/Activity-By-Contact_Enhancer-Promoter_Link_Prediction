@@ -171,7 +171,6 @@ if __name__ == "__main__":
                                             region_cols=(1,2),value_col=6) for path in k27ac_files]
     
     print("Made k27ac tracks.")
-    print(promoters)
     candidate_elements = candidate_elements_from_tracks(k27ac_tracks, promoters, gene_ids)
     candidate_chroms = {chrom: np.array([chrom for reg in candidate_elements['regions'][chrom]]) for chrom in CHROMS}
     
